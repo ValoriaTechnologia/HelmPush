@@ -11,9 +11,15 @@ from urllib.parse import urlparse
 
 
 def get_input(name: str, default: str = "") -> str:
-    """Read action input from environment (INPUT_<NAME>, uppercase, dashes to underscores)."""
-    env_name = "INPUT_" + name.upper().replace("-", "_")
-    return os.environ.get(env_name, default).strip()
+    """Read action input from environment. GitHub Docker actions may pass INPUT_* with hyphens or underscores."""
+    upper = name.upper()
+    env_with_underscores = "INPUT_" + upper.replace("-", "_")
+    env_with_hyphens = "INPUT_" + upper.replace("_", "-")
+    return (
+        os.environ.get(env_with_underscores)
+        or os.environ.get(env_with_hyphens)
+        or default
+    ).strip()
 
 
 def get_registry_host(registry_url: str) -> str:

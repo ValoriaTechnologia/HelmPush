@@ -27,6 +27,11 @@ class TestGetInput:
         with patch.dict(os.environ, {"INPUT_ACCESS_TOKEN": "  token123  "}, clear=False):
             assert ep.get_input("access-token") == "token123"
 
+    def test_reads_input_with_hyphens_in_env_name(self):
+        """GitHub Docker actions may pass INPUT_REGISTRY-URL (hyphen) instead of INPUT_REGISTRY_URL."""
+        with patch.dict(os.environ, {"INPUT_REGISTRY-URL": "oci://host.docker.internal/helm-e2e"}, clear=False):
+            assert ep.get_input("registry-url") == "oci://host.docker.internal/helm-e2e"
+
 
 class TestGetRegistryHost:
     """Tests for get_registry_host()."""
