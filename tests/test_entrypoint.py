@@ -53,9 +53,22 @@ class TestMainLoginAndPush:
         self.workspace = tmp_path
         self.chart_dir = tmp_path / "chart"
         self.chart_dir.mkdir()
+        self.chart_tgz = tmp_path / "e2e-test-chart-0.1.0.tgz"  # produced by mocked helm package
         self.github_output = tmp_path / "github_output"
         yield
         # cleanup: restore modules if we patched
+
+    def _package_mock_stdout(self):
+        return f"Successfully packaged chart and saved it to: {self.chart_tgz}\n"
+
+    def _run_mock_with_package(self, run_mock):
+        """Make run_mock: 1st=helm package, 2nd=login, 3rd=push. Create fake .tgz for package output."""
+        self.chart_tgz.touch()
+        run_mock.side_effect = [
+            MagicMock(returncode=0, stdout=self._package_mock_stdout()),
+            MagicMock(returncode=0),
+            MagicMock(returncode=0),
+        ]
 
     def _env_ecr(self, **overrides):
         base = {
@@ -82,11 +95,13 @@ class TestMainLoginAndPush:
 
     @patch("entrypoint.subprocess.run")
     def test_ecr_mode_calls_login_with_aws_and_token_then_push(self, run_mock):
-        run_mock.return_value = MagicMock(returncode=0)
+        self._run_mock_with_package(run_mock)
         with patch.dict(os.environ, self._env_ecr(), clear=False):
             ep.main()
-        assert run_mock.call_count == 2
-        login_args = run_mock.call_args_list[0]
+        assert run_mock.call_count == 3  # package, login, push
+        package_args = run_mock.call_args_list[0][0][0]
+        assert package_args[:2] == ["helm", "package"]
+        login_args = run_mock.call_args_list[1]
         assert login_args[0][0] == [
             "helm",
             "registry",
@@ -97,28 +112,27 @@ class TestMainLoginAndPush:
             "--password-stdin",
         ]
         assert login_args[1]["input"] == b"ecr-token-123"
-        assert login_args[1]["check"] is True
-        push_args = run_mock.call_args_list[1][0][0]
+        push_args = run_mock.call_args_list[2][0][0]
         assert push_args[:2] == ["helm", "push"]
-        assert push_args[2] == str(self.chart_dir)
+        assert push_args[2] == str(self.chart_tgz)
         assert push_args[3] == "oci://123456789123.dkr.ecr.eu-west-1.amazonaws.com"
         assert "--force" not in push_args
 
     @patch("entrypoint.subprocess.run")
     def test_ecr_mode_with_custom_username(self, run_mock):
-        run_mock.return_value = MagicMock(returncode=0)
+        self._run_mock_with_package(run_mock)
         with patch.dict(os.environ, self._env_ecr(INPUT_USERNAME="CustomUser"), clear=False):
             ep.main()
-        login_args = run_mock.call_args_list[0][0][0]
+        login_args = run_mock.call_args_list[1][0][0]
         assert login_args[login_args.index("--username") + 1] == "CustomUser"
 
     @patch("entrypoint.subprocess.run")
     def test_classic_mode_calls_login_with_username_password_then_push(self, run_mock):
-        run_mock.return_value = MagicMock(returncode=0)
+        self._run_mock_with_package(run_mock)
         with patch.dict(os.environ, self._env_classic(), clear=False):
             ep.main()
-        assert run_mock.call_count == 2
-        login_args = run_mock.call_args_list[0]
+        assert run_mock.call_count == 3
+        login_args = run_mock.call_args_list[1]
         assert login_args[0][0] == [
             "helm",
             "registry",
@@ -129,21 +143,31 @@ class TestMainLoginAndPush:
             "--password-stdin",
         ]
         assert login_args[1]["input"] == b"mypass"
-        push_args = run_mock.call_args_list[1][0][0]
-        assert push_args[2] == str(self.chart_dir)
+        push_args = run_mock.call_args_list[2][0][0]
+        assert push_args[2] == str(self.chart_tgz)
         assert push_args[3] == "https://h.cfcr.io/user/repo"
 
     @patch("entrypoint.subprocess.run")
     def test_force_true_adds_force_flag_to_push(self, run_mock):
-        run_mock.return_value = MagicMock(returncode=0)
+        self._run_mock_with_package(run_mock)
         with patch.dict(os.environ, self._env_classic(INPUT_FORCE="true"), clear=False):
             ep.main()
-        push_args = run_mock.call_args_list[1][0][0]
+        push_args = run_mock.call_args_list[2][0][0]
         assert push_args[-1] == "--force"
 
     @patch("entrypoint.subprocess.run")
+    def test_plain_http_adds_flag_to_login_and_push(self, run_mock):
+        self._run_mock_with_package(run_mock)
+        with patch.dict(os.environ, self._env_classic(INPUT_PLAIN_HTTP="true"), clear=False):
+            ep.main()
+        login_args = run_mock.call_args_list[1][0][0]
+        assert "--plain-http" in login_args
+        push_args = run_mock.call_args_list[2][0][0]
+        assert "--plain-http" in push_args
+
+    @patch("entrypoint.subprocess.run")
     def test_success_writes_push_status_to_github_output(self, run_mock, tmp_path):
-        run_mock.return_value = MagicMock(returncode=0)
+        self._run_mock_with_package(run_mock)
         with patch.dict(
             os.environ,
             self._env_classic(GITHUB_OUTPUT=str(tmp_path / "out")),
@@ -203,7 +227,11 @@ class TestMainLoginAndPush:
 
     @patch("entrypoint.subprocess.run")
     def test_login_failure_exits_1(self, run_mock):
-        run_mock.side_effect = subprocess.CalledProcessError(1, "helm", stderr=b"login failed")
+        self.chart_tgz.touch()
+        run_mock.side_effect = [
+            MagicMock(returncode=0, stdout=self._package_mock_stdout()),
+            subprocess.CalledProcessError(1, "helm", stderr=b"login failed"),
+        ]
         with patch.dict(os.environ, self._env_classic(), clear=False):
             with pytest.raises(SystemExit) as exc_info:
                 ep.main()
@@ -211,7 +239,9 @@ class TestMainLoginAndPush:
 
     @patch("entrypoint.subprocess.run")
     def test_push_failure_exits_1(self, run_mock):
+        self.chart_tgz.touch()
         run_mock.side_effect = [
+            MagicMock(returncode=0, stdout=self._package_mock_stdout()),
             MagicMock(returncode=0),
             subprocess.CalledProcessError(1, "helm", stderr=b"push failed"),
         ]

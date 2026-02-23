@@ -20,10 +20,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget curl jq
 
-      # Allow Docker and Helm to use HTTP registry at localhost
+      # Allow Docker and Helm to use HTTP registry (localhost + host.docker.internal for action container)
       - name: Configure Docker for insecure localhost registry
         run: |
-          echo '{"insecure-registries": ["localhost", "127.0.0.1"]}' | sudo tee /etc/docker/daemon.json
+          echo '{"insecure-registries": ["localhost", "127.0.0.1", "host.docker.internal"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
           sleep 10
           docker info
@@ -80,18 +80,21 @@ jobs:
           echo "Harbor12345" | docker login localhost -u admin --password-stdin
           docker logout localhost
 
-      - name: Install Helm
+      - name: Install Helm (for verify step)
         run: |
           HELM_VERSION=3.16.3
           curl -sSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz" | tar -C /tmp -xzf -
           sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
           helm version
 
-      - name: Helm registry login and push chart (E2E push test)
-        run: |
-          echo "Harbor12345" | helm registry login localhost -u admin --password-stdin
-          helm push chart oci://localhost/helm-e2e
-          echo "Helm push succeeded."
+      - name: Push chart using HelmPush action (E2E)
+        uses: ./
+        with:
+          registry-url: oci://host.docker.internal/helm-e2e
+          username: admin
+          password: Harbor12345
+          chart-folder: chart
+          plain-http: true
 
       - name: Verify push (helm pull)
         run: |

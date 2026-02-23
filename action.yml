@@ -25,6 +25,10 @@ inputs:
     description: 'Force push (overwrite if supported by registry)'
     required: false
     default: 'false'
+  plain-http:
+    description: 'Use plain HTTP for registry (e.g. Harbor without TLS in CI)'
+    required: false
+    default: 'false'
 
 outputs:
   push-status:
