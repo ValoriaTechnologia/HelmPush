@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}-config
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+data:
+  version: {{ .Chart.AppVersion | quote }}

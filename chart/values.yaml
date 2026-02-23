@@ -1,0 +1,2 @@
+# Minimal values for E2E test chart
+replicaCount: 1

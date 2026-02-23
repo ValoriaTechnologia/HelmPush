@@ -47,3 +47,26 @@ Reusable GitHub Action (Docker, Python 3.12) that installs Helm and pushes a cha
 ## Outputs
 
 - `push-status`: `success` when the push completes successfully.
+
+## Development and tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
+
+Tests cover: `get_input`, `get_registry_host`, and `main()` (login and push) with mocked `helm` subprocess calls—ECR vs classic mode, force flag, missing inputs, and login/push failures.
+
+## E2E CI (Harbor)
+
+The workflow [.github/workflows/e2e-harbor.yml](.github/workflows/e2e-harbor.yml) runs on push/PR to `main`/`master`:
+
+1. Configures Docker for insecure localhost registry and installs Docker Compose
+2. Downloads and configures Harbor (HTTP, localhost), then starts it
+3. Waits for Harbor API health
+4. Creates project `helm-e2e` via API
+5. **Docker login** to Harbor (`admin` / `Harbor12345`) to verify the registry
+6. Installs Helm, runs **helm registry login** and **helm push** of the [chart/](chart/) to `oci://localhost/helm-e2e`
+7. Verifies with **helm pull** and checks `Chart.yaml`
+
+The [chart/](chart/) directory is a minimal Helm chart used for this E2E test.
