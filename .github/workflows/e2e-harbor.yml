@@ -49,6 +49,15 @@ jobs:
           sed -i "s/hostname: reg.mydomain.com/hostname: 172.17.0.1/" harbor.yml
           sed -i 's/^https:/https:/g' harbor.yml
           sed -i 's/^  port: 443/  port: 443/' harbor.yml
+
+          mkdir -p certs
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout certs/harbor.key \
+            -out certs/harbor.crt \
+            -subj "/CN=localhost"
+
+          # HTTPS obligatoire
+          echo "protocol: https" >> harbor.yml
           echo "certificate: ./certs/harbor.crt" >> harbor.yml
           echo "private_key: ./certs/harbor.key" >> harbor.yml
           echo "external_url: https://172.17.0.1" >> harbor.yml
