@@ -107,8 +107,41 @@ jobs:
           chart-folder: chart
           plain-http: true
 
-      - name: Helm pull chart
+      - name: Pull Helm chart via curl (HTTP private Harbor)
         run: |
-          helm pull oci://172.17.0.1/helm-e2e/e2e-test-chart --version 0.1.0 --untar --plain-http  --username admin --password "Harbor12345"
-          test -f e2e-test-chart/Chart.yaml
-          grep -q "e2e-test-chart" e2e-test-chart/Chart.yaml
+          set -e
+
+          CHART="e2e-test-chart"
+          REPO="helm-e2e"
+          VERSION="0.1.0"
+          HARBOR="172.17.0.1"
+          USER="admin"
+          PASS="Harbor12345"
+
+          echo "➡️ Get Harbor token"
+          TOKEN=$(curl -s -u "$USER:$PASS" \
+            "http://$HARBOR/service/token?service=harbor-registry" | jq -r '.token')
+          echo "Token retrieved"
+
+          echo "➡️ Get chart manifest"
+          curl -s -H "Authorization: Bearer $TOKEN" \
+            "http://$HARBOR/v2/$REPO/$CHART/manifests/$VERSION" \
+            -o manifest.json
+
+          echo "➡️ Extract layer digest"
+          LAYER_DIGEST=$(jq -r '.layers[0].digest' manifest.json)
+          echo "Layer digest: $LAYER_DIGEST"
+
+          echo "➡️ Download chart blob"
+          curl -L -H "Authorization: Bearer $TOKEN" \
+            "http://$HARBOR/v2/$REPO/$CHART/blobs/$LAYER_DIGEST" \
+            -o $CHART.tgz
+
+          echo "➡️ Extract chart"
+          tar -xzf $CHART.tgz
+
+          echo "➡️ Verify chart"
+          test -f $CHART/Chart.yaml
+          grep -q "$CHART" $CHART/Chart.yaml
+
+          echo "✅ Chart pulled successfully"
