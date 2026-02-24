@@ -20,10 +20,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget curl jq
 
+      - name: Add harbor.local DNS (runner host)
+        run: |
+          echo "127.0.0.1 harbor.local" | sudo tee -a /etc/hosts
+          cat /etc/hosts
+
       # Allow Docker and Helm to use HTTP registry; 172.17.0.1 = host from action container (Linux has no host.docker.internal)
       - name: Configure Docker for insecure localhost registry
         run: |
-          echo '{"insecure-registries": ["localhost", "127.0.0.1", "172.17.0.1"]}' | sudo tee /etc/docker/daemon.json
+          echo '{"insecure-registries": ["harbor.local"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
           sleep 10
           docker info
@@ -44,14 +49,11 @@ jobs:
           cd harbor
           cp harbor.yml.tmpl harbor.yml
 
-          HOST_IP=$(ip route | awk '/default/ {print $3}')
-          echo "Using HOST_IP=$HOST_IP"
-
-          sed -i "s/hostname: reg.mydomain.com/hostname: ${HOST_IP}/" harbor.yml
+          sed -i 's/hostname: reg.mydomain.com/hostname: harbor.local/' harbor.yml
           sed -i 's/^https:/#https:/g' harbor.yml
           sed -i 's/^  port: 443/#  port: 443/g' harbor.yml
-
-          echo "external_url: http://${HOST_IP}" >> harbor.yml
+          echo "external_url: http://harbor.local" >> harbor.yml
+          cat harbor.yml
 
       - name: Start Harbor
         run: |
@@ -83,8 +85,8 @@ jobs:
 
       - name: Docker login to Harbor (verify registry)
         run: |
-          echo "Harbor12345" | docker login localhost -u admin --password-stdin
-          docker logout localhost
+          echo "Harbor12345" | docker login harbor.local -u admin --password-stdin
+          docker logout harbor.local
 
       - name: Install Helm (for verify step)
         run: |
@@ -93,17 +95,10 @@ jobs:
           sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
           helm version
 
-      - name: Get host IP for action container (gateway from container = host on Linux runners)
-        id: host_ip
-        run: |
-          HOST_IP=$(docker run --rm alpine ip route | awk '/default/ {print $3}')
-          echo "ip=${HOST_IP:-172.17.0.1}" >> $GITHUB_OUTPUT
-          echo "Using registry host: $HOST_IP"
-
       - name: Push chart using HelmPush action (E2E)
         uses: ./
         with:
-          registry-url: oci://${{ steps.host_ip.outputs.ip }}/helm-e2e
+          registry-url: oci://harbor.local/helm-e2e
           username: admin
           password: Harbor12345
           chart-folder: chart
@@ -111,6 +106,6 @@ jobs:
 
       - name: Verify push (helm pull)
         run: |
-          helm pull oci://localhost/helm-e2e/e2e-test-chart --version 0.1.0 --untar
+          helm pull oci://harbor.local/helm-e2e/e2e-test-chart --version 0.1.0 --untar
           test -f e2e-test-chart/Chart.yaml
           grep -q "e2e-test-chart" e2e-test-chart/Chart.yaml
