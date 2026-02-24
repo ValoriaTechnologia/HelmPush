@@ -39,13 +39,19 @@ jobs:
           wget -q https://github.com/goharbor/harbor/releases/download/v2.10.0/harbor-online-installer-v2.10.0.tgz
           tar xzf harbor-online-installer-v2.10.0.tgz
 
-      - name: Configure Harbor (HTTP, localhost)
+      - name: Configure Harbor (HTTP)
         run: |
           cd harbor
           cp harbor.yml.tmpl harbor.yml
-          sed -i 's/hostname: reg.mydomain.com/hostname: localhost/' harbor.yml
+
+          HOST_IP=$(ip route | awk '/default/ {print $3}')
+          echo "Using HOST_IP=$HOST_IP"
+
+          sed -i "s/hostname: reg.mydomain.com/hostname: ${HOST_IP}/" harbor.yml
           sed -i 's/^https:/#https:/g' harbor.yml
           sed -i 's/^  port: 443/#  port: 443/g' harbor.yml
+
+          echo "external_url: http://${HOST_IP}" >> harbor.yml
 
       - name: Start Harbor
         run: |
