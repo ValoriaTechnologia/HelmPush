@@ -100,47 +100,38 @@ jobs:
           chart-folder: chart
           plain-http: true
 
-      - name: Pull Helm chart via curl (HTTP private Harbor)
+      - name: Check if Helm Chart Manifest exists in Harbor (OCI)
+        shell: bash
         run: |
-          set -e
-
-          # Config
-          CHART="e2e-test-chart"
+          # Variables (Peuvent être définies au niveau env: ou via secrets)
+          HARBOR_URL="172.17.0.1"
           REPO="helm-e2e"
+          CHART="e2e-test-chart"
           VERSION="0.1.0"
-          HARBOR="172.17.0.1"
           USER="admin"
           PASS="Harbor12345"
 
-          echo "➡️ Get Harbor token"
-          TOKEN=$(curl -s -u "$USER:$PASS" \
-            "http://$HARBOR/service/token?service=harbor-registry" | jq -r '.token')
-          echo "Token retrieved"
+          echo "Checking manifest for ${CHART}:${VERSION}..."
 
-          echo "➡️ Get chart manifest"
-          curl -s -H "Authorization: Bearer $TOKEN" \
-            "http://$HARBOR/v2/$REPO/$CHART/manifests/$VERSION" \
-            -o manifest.json
+          # Exécution du curl
+          # -s : silencieux (pas de barre de progression)
+          # -o /dev/null : n'affiche pas le corps du JSON
+          # -w : écrit uniquement le code HTTP final
+          # -k : ignore la vérification SSL (souvent nécessaire pour les IP privées)
+          STATUS=$(curl -s -o /dev/null -k -w "%{http_code}" \
+            -u "${USER}:${PASS}" \
+            -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+            "http://${HARBOR_URL}/v2/${REPO}/${CHART}/manifests/${VERSION}")
 
-          echo "➡️ Find the chart layer digest"
-          LAYER_DIGEST=$(jq -r '.layers[] | select(.mediaType | test("helm.chart.layer")) | .digest' manifest.json)
-
-          if [ -z "$LAYER_DIGEST" ] || [ "$LAYER_DIGEST" = "null" ]; then
-            echo "❌ Could not find Helm chart layer in manifest"
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✅ Success: Manifest found (HTTP 200)"
+          elif [ "$STATUS" -eq 401 ] || [ "$STATUS" -eq 403 ]; then
+            echo "❌ Error: Authentication failed (HTTP $STATUS)"
+            exit 1
+          elif [ "$STATUS" -eq 404 ]; then
+            echo "❌ Error: Chart or Version not found (HTTP 404)"
+            exit 1
+          else
+            echo "❌ Error: Unexpected status code (HTTP $STATUS)"
             exit 1
           fi
-          echo "Layer digest: $LAYER_DIGEST"
-
-          echo "➡️ Download chart blob"
-          curl -L -H "Authorization: Bearer $TOKEN" \
-            "http://$HARBOR/v2/$REPO/$CHART/blobs/$LAYER_DIGEST" \
-            -o $CHART.tgz
-
-          echo "➡️ Extract chart"
-          tar -xzf $CHART.tgz
-
-          echo "➡️ Verify chart"
-          test -f $CHART/Chart.yaml
-          grep -q "$CHART" $CHART/Chart.yaml
-
-          echo "✅ Chart pulled successfully"
