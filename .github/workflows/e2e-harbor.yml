@@ -109,6 +109,6 @@ jobs:
 
       - name: Helm pull chart
         run: |
-          echo "Harbor12345" | helm pull oci://172.17.0.1/helm-e2e/e2e-test-chart --version 0.1.0 --untar --plain-http  --username admin --password-stdin
+          helm pull oci://172.17.0.1/helm-e2e/e2e-test-chart --version 0.1.0 --untar --plain-http  --username admin --password "Harbor12345"
           test -f e2e-test-chart/Chart.yaml
           grep -q "e2e-test-chart" e2e-test-chart/Chart.yaml
