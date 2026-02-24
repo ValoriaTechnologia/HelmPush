@@ -1,5 +1,4 @@
-# E2E test: start Harbor, docker login to verify, then Helm push our chart (OCI)
-name: E2E Harbor Helm Push
+name: E2E Harbor Helm Push HTTPS
 
 on:
   push:
@@ -16,16 +15,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget curl jq
+          sudo apt-get install -y wget curl jq openssl
 
-      # Allow Docker and Helm to use HTTP registry; 172.17.0.1 = host from action container (Linux has no host.docker.internal)
       - name: Configure Docker
         run: |
           echo '{"insecure-registries":["172.17.0.1"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
           sleep 10
 
-      - name: Install Docker Compose (for Harbor install script)
+      - name: Install Docker Compose
         run: |
           sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
@@ -36,19 +34,24 @@ jobs:
           wget -q https://github.com/goharbor/harbor/releases/download/v2.10.0/harbor-online-installer-v2.10.0.tgz
           tar xzf harbor-online-installer-v2.10.0.tgz
 
-      - name: Configure Harbor (HTTP)
+      - name: Generate self-signed certificate
+        run: |
+          mkdir -p harbor/certs
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout harbor/certs/harbor.key \
+            -out harbor/certs/harbor.crt \
+            -subj "/CN=localhost"
+
+      - name: Configure Harbor for HTTPS
         run: |
           cd harbor
           cp harbor.yml.tmpl harbor.yml
-
-          HOST_IP=172.17.0.1
-
-          sed -i "s/hostname: reg.mydomain.com/hostname: ${HOST_IP}/" harbor.yml
-          sed -i 's/^https:/#https:/g' harbor.yml
-          sed -i 's/^  port: 443/#  port: 443/g' harbor.yml
-
-          echo "external_url: http://${HOST_IP}" >> harbor.yml
-
+          sed -i "s/hostname: reg.mydomain.com/hostname: 172.17.0.1/" harbor.yml
+          sed -i 's/^https:/https:/g' harbor.yml
+          sed -i 's/^  port: 443/  port: 443/' harbor.yml
+          echo "certificate: ./certs/harbor.crt" >> harbor.yml
+          echo "private_key: ./certs/harbor.key" >> harbor.yml
+          echo "external_url: https://172.17.0.1" >> harbor.yml
           cat harbor.yml
 
       - name: Start Harbor
@@ -56,15 +59,15 @@ jobs:
           cd harbor
           sudo ./install.sh --with-trivy
 
-      - name: Wait for Harbor to be ready
+      - name: Wait for Harbor ready
         run: |
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/v2.0/health || true)
+            code=$(curl -k -s -o /dev/null -w "%{http_code}" https://172.17.0.1/api/v2.0/health || true)
             if [ "$code" = "200" ]; then
               echo "Harbor is ready"
               exit 0
             fi
-            echo "Waiting for Harbor... ($i/30) (http_code=$code)"
+            echo "Waiting for Harbor... ($i/30) http_code=$code"
             sleep 10
           done
           echo "Harbor did not become ready"
@@ -72,31 +75,23 @@ jobs:
 
       - name: Create Harbor project for Helm (OCI)
         run: |
-          curl -s -X POST "http://172.17.0.1/api/v2.0/projects" \
+          curl -k -s -X POST "https://172.17.0.1/api/v2.0/projects" \
             -u "admin:Harbor12345" \
             -H "Content-Type: application/json" \
             -d '{"project_name":"helm-e2e","public":false}' \
             -o /dev/null -w "%{http_code}" | grep -qE "201|409" || true
-          # 409 = project already exists
 
       - name: Docker login to Harbor (verify registry)
         run: |
           echo "Harbor12345" | docker login 172.17.0.1 -u admin --password-stdin
           docker logout 172.17.0.1
 
-      - name: Install Helm (for verify step)
+      - name: Install Helm
         run: |
           HELM_VERSION=3.16.3
           curl -sSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz" | tar -C /tmp -xzf -
           sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
           helm version
-
-      - name: Get host IP for action container (gateway from container = host on Linux runners)
-        id: host_ip
-        run: |
-          HOST_IP=$(docker run --rm alpine ip route | awk '/default/ {print $3}')
-          echo "ip=${HOST_IP:-172.17.0.1}" >> $GITHUB_OUTPUT
-          echo "Using registry host: $HOST_IP"
 
       - name: Push chart using HelmPush action (E2E)
         uses: ./
@@ -105,49 +100,11 @@ jobs:
           username: admin
           password: Harbor12345
           chart-folder: chart
-          plain-http: true
 
-      - name: Pull Helm chart via curl (HTTP private Harbor)
+      - name: Helm pull chart
         run: |
-          set -e
-
-          # Config
-          CHART="e2e-test-chart"
-          REPO="helm-e2e"
-          VERSION="0.1.0"
-          HARBOR="172.17.0.1"
-          USER="admin"
-          PASS="Harbor12345"
-
-          echo "➡️ Get Harbor token"
-          TOKEN=$(curl -s -u "$USER:$PASS" \
-            "http://$HARBOR/service/token?service=harbor-registry" | jq -r '.token')
-          echo "Token retrieved"
-
-          echo "➡️ Get chart manifest"
-          curl -s -H "Authorization: Bearer $TOKEN" \
-            "http://$HARBOR/v2/$REPO/$CHART/manifests/$VERSION" \
-            -o manifest.json
-
-          echo "➡️ Find the chart layer digest"
-          LAYER_DIGEST=$(jq -r '.layers[] | select(.mediaType | test("helm.chart.layer")) | .digest' manifest.json)
-
-          if [ -z "$LAYER_DIGEST" ] || [ "$LAYER_DIGEST" = "null" ]; then
-            echo "❌ Could not find Helm chart layer in manifest"
-            exit 1
-          fi
-          echo "Layer digest: $LAYER_DIGEST"
-
-          echo "➡️ Download chart blob"
-          curl -L -H "Authorization: Bearer $TOKEN" \
-            "http://$HARBOR/v2/$REPO/$CHART/blobs/$LAYER_DIGEST" \
-            -o $CHART.tgz
-
-          echo "➡️ Extract chart"
-          tar -xzf $CHART.tgz
-
-          echo "➡️ Verify chart"
-          test -f $CHART/Chart.yaml
-          grep -q "$CHART" $CHART/Chart.yaml
-
-          echo "✅ Chart pulled successfully"
+          export HELM_EXPERIMENTAL_OCI=1
+          helm registry login https://172.17.0.1 --username admin --password Harbor12345 --insecure-skip-tls-verify
+          helm pull oci://172.17.0.1/helm-e2e/e2e-test-chart --version 0.1.0 --untar
+          test -f e2e-test-chart/Chart.yaml
+          grep -q "e2e-test-chart" e2e-test-chart/Chart.yaml
