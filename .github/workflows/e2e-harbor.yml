@@ -46,13 +46,26 @@ jobs:
         run: |
           cd harbor
           cp harbor.yml.tmpl harbor.yml
-          sed -i "s/hostname: reg.mydomain.com/hostname: 172.17.0.1/" harbor.yml
-          echo "protocol: https" >> harbor.yml
-          echo "port: 443" >> harbor.yml
-          echo "certificate: ./certs/harbor.crt" >> harbor.yml
-          echo "private_key: ./certs/harbor.key" >> harbor.yml
-          echo "external_url: https://172.17.0.1" >> harbor.yml
-          cat harbor.yml
+
+          HOST=172.17.0.1
+          CERT_PATH=./certs/harbor.crt
+          KEY_PATH=./certs/harbor.key
+
+          sed -i "s/hostname: reg.mydomain.com/hostname: ${HOST}/" harbor.yml
+
+          # Désactiver l'ancien bloc HTTPS
+          sed -i '/^https:/ s/^/#/' harbor.yml
+          sed -i '/^  port: 443/ s/^/#/' harbor.yml
+
+          # Ajouter un vrai bloc HTTPS
+          cat <<EOF >> harbor.yml
+          https:
+            port: 443
+            certificate: ${CERT_PATH}
+            private_key: ${KEY_PATH}
+          EOF
+
+          echo "external_url: https://${HOST}" >> harbor.yml
 
       - name: Start Harbor
         run: |
