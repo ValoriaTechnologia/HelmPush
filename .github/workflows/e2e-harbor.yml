@@ -111,6 +111,7 @@ jobs:
         run: |
           set -e
 
+          # Config
           CHART="e2e-test-chart"
           REPO="helm-e2e"
           VERSION="0.1.0"
@@ -128,8 +129,13 @@ jobs:
             "http://$HARBOR/v2/$REPO/$CHART/manifests/$VERSION" \
             -o manifest.json
 
-          echo "➡️ Extract layer digest"
-          LAYER_DIGEST=$(jq -r '.layers[0].digest' manifest.json)
+          echo "➡️ Find the chart layer digest"
+          LAYER_DIGEST=$(jq -r '.layers[] | select(.mediaType | test("helm.chart.layer")) | .digest' manifest.json)
+
+          if [ -z "$LAYER_DIGEST" ] || [ "$LAYER_DIGEST" = "null" ]; then
+            echo "❌ Could not find Helm chart layer in manifest"
+            exit 1
+          fi
           echo "Layer digest: $LAYER_DIGEST"
 
           echo "➡️ Download chart blob"
