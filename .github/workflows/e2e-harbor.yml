@@ -107,9 +107,23 @@ jobs:
           chart-folder: chart
           plain-http: true
 
-      - name: Verify push (helm pull)
+      - name: Configure Helm HTTP registry
         run: |
-          echo "Harbor12345" | helm registry login 172.17.0.1 --username admin --password-stdin --plain-http
+          export HELM_EXPERIMENTAL_OCI=1
+          export HELM_REGISTRY_CONFIG=$HOME/.config/helm/registries.yaml
+          mkdir -p $(dirname $HELM_REGISTRY_CONFIG)
+          cat > $HELM_REGISTRY_CONFIG <<EOF
+          mirrors:
+            "oci://172.17.0.1":
+              protocol: http
+          EOF
+
+      - name: Helm registry login
+        run: |
+          echo "Harbor12345" | helm registry login 172.17.0.1 --username admin --password-stdin
+
+      - name: Helm pull chart
+        run: |
           helm pull oci://172.17.0.1/helm-e2e/e2e-test-chart --version 0.1.0 --untar --plain-http
           test -f e2e-test-chart/Chart.yaml
           grep -q "e2e-test-chart" e2e-test-chart/Chart.yaml
