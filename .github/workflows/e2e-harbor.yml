@@ -73,20 +73,6 @@ jobs:
           cd harbor
           sudo ./install.sh --with-trivy
 
-      - name: Wait for Harbor ready
-        run: |
-          for i in $(seq 1 30); do
-            code=$(curl -k -s -o /dev/null -w "%{http_code}" https://172.17.0.1/api/v2.0/health || true)
-            if [ "$code" = "200" ]; then
-              echo "Harbor is ready"
-              exit 0
-            fi
-            echo "Waiting for Harbor... ($i/30) http_code=$code"
-            sleep 10
-          done
-          echo "Harbor did not become ready"
-          exit 1
-
       - name: Create Harbor project for Helm (OCI)
         run: |
           curl -k -s -X POST "https://172.17.0.1/api/v2.0/projects" \
