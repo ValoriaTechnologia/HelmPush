@@ -27,7 +27,7 @@ jobs:
 
       - name: Bump tag version (dry run)
         id: tag
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: ValoriaTechnologia/github-tag-action@v0.0.9
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           release_branches: main
