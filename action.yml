@@ -1,39 +1,39 @@
-name: 'Helm Push'
-description: 'Push a Helm chart to an OCI registry (e.g. AWS ECR) or classic registry (username/password)'
+name: Helm Push
+description: Push a Helm chart to an OCI registry (e.g. AWS ECR) or classic registry
+  (username/password)
 branding:
-  icon: 'package'
-  color: 'blue'
-
+  icon: package
+  color: blue
 inputs:
   registry-url:
-    description: 'Registry URL (e.g. oci://123456789123.dkr.ecr.eu-west-1.amazonaws.com or https://h.cfcr.io/user_or_org/reponame)'
+    description: Registry URL (e.g. oci://123456789123.dkr.ecr.eu-west-1.amazonaws.com
+      or https://h.cfcr.io/user_or_org/reponame)
     required: true
   username:
-    description: 'Registry username (optional for ECR when access-token is set; default AWS)'
+    description: Registry username (optional for ECR when access-token is set; default
+      AWS)
     required: false
   password:
-    description: 'Registry password (for classic registry; use secrets.HELM_PASSWORD)'
+    description: Registry password (for classic registry; use secrets.HELM_PASSWORD)
     required: false
   access-token:
-    description: 'Access token for ECR OCI (e.g. from steps.ecr_login.outputs.result)'
+    description: Access token for ECR OCI (e.g. from steps.ecr_login.outputs.result)
     required: false
   chart-folder:
-    description: 'Path to the chart directory relative to the workspace'
+    description: Path to the chart directory relative to the workspace
     required: false
-    default: 'chart'
+    default: chart
   force:
-    description: 'Force push (overwrite if supported by registry)'
+    description: Force push (overwrite if supported by registry)
     required: false
     default: 'false'
   plain-http:
-    description: 'Use plain HTTP for registry (e.g. Harbor without TLS in CI)'
+    description: Use plain HTTP for registry (e.g. Harbor without TLS in CI)
     required: false
     default: 'false'
-
 outputs:
   push-status:
-    description: 'Status of the push (success/failure)'
-
+    description: Status of the push (success/failure)
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
+  using: docker
+  image: ghcr.io/valoriatechnologia/helm-push:v0.0.4
