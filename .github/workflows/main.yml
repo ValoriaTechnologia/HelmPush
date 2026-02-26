@@ -9,11 +9,27 @@ permissions:
 
 jobs:
   e2e-tests-job:
+    if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/e2e-tests.yml
   unit-tests-job:
+    if: github.actor != 'github-actions[bot]'
     uses: ./.github/workflows/unit-tests.yml
-  release-job:
+  bump-job:
     needs:
       - e2e-tests-job
       - unit-tests-job
+    uses: ./.github/workflows/bump.yml
+  build-push-job:
+    needs:
+      - bump-job
+    uses: ./.github/workflows/build-push.yml
+    with:
+      tag: ${{ needs.bump-job.outputs.new_tag }}
+  release-job:
+    needs:
+      - build-push-job
+      - bump-job
     uses: ./.github/workflows/release.yml
+    with:
+      tag_to_deploy: ${{ needs.bump-job.outputs.new_tag }}
+      changelog: ${{ needs.bump-job.outputs.changelog }}

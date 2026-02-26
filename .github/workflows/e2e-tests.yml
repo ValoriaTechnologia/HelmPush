@@ -10,6 +10,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Update action.yml docker version
+        uses: ValoriaTechnologia/FieldChartUpdater@v0.0.2
+        with:
+          file: ./action.yml
+          edits: '[{"path": "runs.image", "value": "Dockerfile"}]'
+
       - name: Install dependencies
         run: |
           sudo apt-get update
