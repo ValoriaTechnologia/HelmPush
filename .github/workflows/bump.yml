@@ -27,20 +27,22 @@ jobs:
 
       - name: Bump tag version (dry run)
         id: tag
-        uses: ValoriaTechnologia/github-tag-action@v0.0.9
+        uses: ValoriaTechnologia/github-tag-action@v0.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           release_branches: main
-          default_bump: patch
+          default_bump: false
           dry_run: true
 
       - name: Update action.yml docker version
-        uses: ValoriaTechnologia/FieldChartUpdater@v0.0.2
+        if: steps.tag.outputs.new_tag != ''
+        uses: ValoriaTechnologia/FieldChartUpdater@v0.1.2
         with:
           file: ./action.yml
           edits: '[{"path": "runs.image", "value": "ghcr.io/valoriatechnologia/helm-push:${{ steps.tag.outputs.new_tag }}"}]'
 
       - name: Commit version bump
+        if: steps.tag.outputs.new_tag != ''
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -49,6 +51,7 @@ jobs:
           git push
 
       - name: Push temp branch and create tag
+        if: steps.tag.outputs.new_tag != ''
         run: |
           git tag -a ${{ steps.tag.outputs.new_tag }} -m "${{ steps.tag.outputs.new_tag }}"
           git push origin ${{ steps.tag.outputs.new_tag }}

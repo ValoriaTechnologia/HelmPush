@@ -21,12 +21,14 @@ jobs:
       - unit-tests-job
     uses: ./.github/workflows/bump.yml
   build-push-job:
+    if: needs.bump-job.outputs.new_tag != ''
     needs:
       - bump-job
     uses: ./.github/workflows/build-push.yml
     with:
       tag: ${{ needs.bump-job.outputs.new_tag }}
   release-job:
+    if: needs.bump-job.outputs.new_tag != ''
     needs:
       - build-push-job
       - bump-job
