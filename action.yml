@@ -36,4 +36,4 @@ outputs:
     description: Status of the push (success/failure)
 runs:
   using: docker
-  image: ghcr.io/valoriatechnologia/helm-push:v0.0.5
+  image: ghcr.io/valoriatechnologia/helm-push:v0.1.0
