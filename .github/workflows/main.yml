@@ -1,0 +1,19 @@
+name: "Main Pipeline"
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  e2e-tests-job:
+    uses: ./.github/workflows/e2e-tests.yml
+  unit-tests-job:
+    uses: ./.github/workflows/unit-tests.yml
+  release-job:
+    needs:
+      - e2e-tests-job
+      - unit-tests-job
+    uses: ./.github/workflows/release.yml

@@ -1,9 +1,7 @@
-name: Release
+name: "Release Action"
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: write
@@ -19,7 +17,7 @@ jobs:
 
       - name: Bump tag version
         id: tag
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: ValoriaTechnologia\github-tag-action@v0.0.1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           release_branches: main

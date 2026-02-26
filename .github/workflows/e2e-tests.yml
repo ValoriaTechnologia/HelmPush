@@ -1,9 +1,6 @@
-# E2E test: start Harbor, docker login to verify, then Helm push our chart (OCI)
-name: E2E Harbor Helm Push
-
+name: "E2E Tests"
 on:
-  push:
-    branches: [main]
+  workflow_call:
 
 jobs:
   harbor-e2e:
